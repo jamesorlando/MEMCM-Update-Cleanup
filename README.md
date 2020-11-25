@@ -1,6 +1,6 @@
 # MEMCM-Update-Cleanup
 
-See PDF for detailed instructions for setup. 
+See PDF for detailed instructions for setup with Status Message Filters in the MEMCM Console. 
 
     Script name: Remove-ExpiredSupersededUpdates
     Author: James Orlando
