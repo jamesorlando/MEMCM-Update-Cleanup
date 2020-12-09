@@ -1,22 +1,22 @@
 ﻿<#
 .SYNOPSIS
-    Perform a cleanup of expired or superseded updates that are deployed. To prevent removing updates prior to deployment of new updates use the delay paramenter. For instance
+    Perform a cleanup of expired, superseded or not required updates that are deployed. To prevent removing updates prior to deployment of new updates use the delay paramenter. For instance
     if updates are deployed 3 days after Patch Tuesday you would not want to stop deploying the updates that are superseded until you are ready to deploy the updates that superseded them. 
 .PARAMETER SiteCode
     SCCM 3 digit site code. Mandatory parameter that must be 3 digits
 .PARAMETER ProviderMachineName
     Server where the SMS Provider is located. If not specified a WMI search will be done in an attempt to locate it
 .EXAMPLE
-    Remove-ExpiredSupersededUpdates -SiteCode JPO -ProviderMachineName "cm01.contoso.com" -Delay 3
+    Cleanup-UpdateDeployments -SiteCode JPO -ProviderMachineName "cm01.contoso.com" -Delay 3
 .NOTES
     Due to parameter validation, do not use single or double quotes for site code. Example: -SiteCode "JPO" will not work
-
-    Script name: Remove-ExpiredSupersededUpdates
+    Script name: Cleanup-UpdateDeployments
     Author: James Orlando
     Contact: James.Orlando@microsoft.com
     Date Created: 11-20-2019
     Date Modified: 04-23-2020
     4-23-2020 Added delay to account for delta between patch tuesday and when customer deployes patches. 
+    12-7-2020 Package and SUG Cleanup
 #>
 
 #Parameters
@@ -61,12 +61,12 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
     {
         #Get SMS Provider location if not declared as a parameter
         if($ProviderMachineName -eq $null){
-        $ProviderMachineName = (Get-WmiObject -Class SMS_ProviderLocation -Namespace root\SMS).machine
-        }
-        #imports SCCM Module if needed
-        if((Get-Module ConfigurationManager) -eq $null) {
-            Import-Module "$($ENV:SMS_ADMIN_UI_PATH)\..\ConfigurationManager.psd1"
-        }
+            $ProviderMachineName = (Get-WmiObject -Class SMS_ProviderLocation -Namespace root\SMS).machine
+            }
+            #imports SCCM Module if needed
+            if((Get-Module ConfigurationManager) -eq $null) {
+                Import-Module "$($ENV:SMS_ADMIN_UI_PATH)\..\ConfigurationManager.psd1"
+            }
         #Create PSDrive for Site
         if((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -eq $null) {
             New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $ProviderMachineName }
@@ -77,19 +77,42 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
         Write-Log -log "Cleanup delay specified as $delay days"
 
         #Get Updates that are deployed and superseded or expired
-        $Updates = Get-CMSoftwareUpdate -fast | Where-Object {$_.IsDeployed -eq $true -and ($_.IsExpired -eq $true -or $_.IsSuperseded -eq $True)}
+        $Updates = Get-CMSoftwareUpdate -fast | Where-Object {$_.IsDeployed -eq $true -and ($_.IsExpired -eq $true -or $_.IsSuperseded -eq $True -or $_.NumMissing -eq 0)}
         Write-Log -log ("Found " + $updates.count + " updates that need to be removed from deployments") 
 
         foreach($Update in $Updates)
-        {
-        $UpdateGroups = Get-CMSoftwareUpdateGroup | Where-Object {$_.updates -contains $update.CI_ID}
-            ForEach($UpdateGroup in $UpdateGroups)
-                {
-                Remove-CMSoftwareUpdateFromGroup -SoftwareUpdateId $Update.CI_ID -SoftwareUpdateGroupId $UpdateGroup.CI_ID -Force
-                Write-Log -log ("Removed " + $Update.LocalizedDisplayName + " from " + $UpdateGroup.LocalizedDisplayName + " Conditions - IsSuperseded: "`
-                 + $Update.IsSuperseded + " -IsExpired: " + $Update.IsExpired)
+            {
+            $UpdateGroups = Get-CMSoftwareUpdateGroup | Where-Object {$_.updates -contains $update.CI_ID}
+                ForEach($UpdateGroup in $UpdateGroups)
+                    {
+                    Remove-CMSoftwareUpdateFromGroup -SoftwareUpdateId $Update.CI_ID -SoftwareUpdateGroupId $UpdateGroup.CI_ID -Force
+                    Write-Log -log ("Removed " + $Update.LocalizedDisplayName + " from " + $UpdateGroup.LocalizedDisplayName + " Conditions - IsSuperseded: "`
+                     + $Update.IsSuperseded + " -IsExpired: " + $Update.IsExpired + " -NumberMissing: " + $Update.NumMissing)
+                    }
+            }
+    
+        #Get Sofwate Update Groups with no updates
+        $SUGs = Get-CMSoftwareUpdateGroup | ? {$_.NumberOfUpdates -eq 0}
+        ForEach($SUG in $Sugs){
+            Write-Log -log "Software Update Group $($SUG.LocalizedDisplayName) has $($SUG.NumberOfUpdates), so it will be removed"
+            $SUG | Remove-CMSoftwareUpdateGroup -Force
+            }
+
+        #Remove Updates from Deployment Packages
+        $ProvisionedUpdates = Get-CMSoftwareUpdate -fast -IsContentProvisioned $True | Where-Object {$_.IsDeployed -eq $false}
+        Write-Log -log "Found $($provisionedupdates.count) updates that need to be removed from update packages."
+
+
+#******************* In Progress ************************************************************
+        ForEach($ProvisionedUpdate in $ProvisionedUpdates){
+            $UpdatePackages = Get-CMSoftwareUpdateDeploymentPackage
+            ForEach($UpdatePackage in $UpdatePackages){
+                
                 }
-        }
+            }
+
+
+
     }
 
 Else { Write-Log -log "No action taken, in delay period" }
