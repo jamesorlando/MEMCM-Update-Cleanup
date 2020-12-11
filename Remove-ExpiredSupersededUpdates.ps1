@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Perform a cleanup of expired, superseded or not required updates that are deployed. To prevent removing updates prior to deployment of new updates use the delay paramenter. For instance
+    Perform a cleanup of expired, superseded or not required (0) updates that are deployed. To prevent removing updates prior to deployment of new updates use the delay paramenter. For instance
     if updates are deployed 3 days after Patch Tuesday you would not want to stop deploying the updates that are superseded until you are ready to deploy the updates that superseded them. 
 .PARAMETER SiteCode
     SCCM 3 digit site code. Mandatory parameter that must be 3 digits
@@ -16,7 +16,7 @@
     Date Created: 11-20-2019
     Date Modified: 04-23-2020
     4-23-2020 Added delay to account for delta between patch tuesday and when customer deployes patches. 
-    12-7-2020 Package and SUG Cleanup
+    12-7-2020 Package and SUG Cleanup added
 #>
 
 #Parameters
@@ -32,10 +32,10 @@ Param(
 
 Function Write-Log ($log)
 {
-    $log + " " + (Get-Date) | Out-File "$env:SMS_LOG_PATH\Remove-ExpiredSupersededUpdates.log" -Append
-    if((Get-Item "$env:SMS_LOG_PATH\Remove-ExpiredSupersededUpdates.log").lenght -gt "5mb")
+    $log + " " + (Get-Date) | Out-File "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log" -Append
+    if((Get-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log").lenght -gt "5mb")
         {
-        Rename-Item "$env:SMS_LOG_PATH\Remove-ExpiredSupersededUpdates.log" -NewName "$env:SMS_LOG_PATH\Remove-ExpiredSupersededUpdates.lo_"
+        Rename-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log" -NewName "$env:SMS_LOG_PATH\CleanupUpdateDeployments.lo_"
         }
 }
 
@@ -55,6 +55,7 @@ Function Get-PatchTuesday
         Write-Log -log " Patch Tuesday this month is $PatchTuesday"
     }
 
+#Run First Function to establish Patch Tuesday for the month. 
 Get-PatchTuesday
 
 If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.Date -gt (Get-Date).Date)
@@ -73,7 +74,7 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
         #Set Location to SMS Site
         Set-Location "$($SiteCode):\"
 
-        Write-Log -log "Remove-ExpiredSupersededUpdates Started"
+        Write-Log -log "Cleanup-UpdateDeployments Started"
         Write-Log -log "Cleanup delay specified as $delay days"
 
         #Get Updates that are deployed and superseded or expired
@@ -179,4 +180,4 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
 
 Else { Write-Log -log "No action taken, in delay period" }
 
-Write-Log -log "Remove-ExpiredSupersededUpdates Complete"
+Write-Log -log "Cleanup-UpdateDeployments Complete"
