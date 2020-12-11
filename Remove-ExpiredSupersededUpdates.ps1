@@ -99,19 +99,81 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
             }
 
         #Remove Updates from Deployment Packages
-        $ProvisionedUpdates = Get-CMSoftwareUpdate -fast -IsContentProvisioned $True | Where-Object {$_.IsDeployed -eq $false}
-        Write-Log -log "Found $($provisionedupdates.count) updates that need to be removed from update packages."
+        Write-Log -log "Starting Software Update Deployment Package Cleanup"
+        $SUDPQuery = "SELECT 
+        SMS_PackageToContent.PackageID,
+        SMS_CIToContent.ContentID,
+        SMS_PackageToContent.ContentSubFolder,
+        SMS_SoftwareUpdate.CI_ID
+        FROM
+        SMS_SoftwareUpdate
+        JOIN
+        SMS_CIToContent on SMS_CIToContent.CI_ID = SMS_SoftwareUpdate.CI_ID
+        JOIN
+        SMS_PackageToContent on SMS_PackageToContent.ContentID = SMS_CIToContent.ContentID
+        WHERE 
+        (SMS_SoftwareUpdate.IsContentProvisioned=1 and SMS_SoftwareUpdate.IsDeployed=0) and SMS_PackageToContent.PackageType = 5"   
 
+        $SUDPData = Get-WmiObject -Namespace "root\SMS\site_$SiteCode" -Query $SUDPQuery
+        $PackageIDs = $SUDPData.SMS_PackageToContent.PackageID | Get-Unique
+        Write-Log -log "Found $($PackageIDs.Count) package that needs updates removed and content cleaned. "
 
-#******************* In Progress ************************************************************
-        ForEach($ProvisionedUpdate in $ProvisionedUpdates){
-            $UpdatePackages = Get-CMSoftwareUpdateDeploymentPackage
-            ForEach($UpdatePackage in $UpdatePackages){
-                
+        IF ($SUDPData)
+        {
+           
+            Foreach ($PackageID in $PackageIDs) 
+            {
+                Write-Log -log "Starting cleanup of $($packageid). "
+                $GLOBAL:RemoveContentIDs = @()
+                $GLOBAL:RemoveSubfolders = @()
+                $GLOBAL:RemoveItems = @()
+
+                $GLOBAL:PkgSource = Get-WmiObject -Namespace "root\SMS\site_$SiteCode" -Query  "Select * from SMS_SoftwareUpdatesPackage WHERE PackageID=`"$PackageID`""
+                                            
+                Foreach ($Object in $SUDPData)
+                {
+                    IF ($Object.SMS_PackageToContent.PackageID -eq $PackageID)
+                    {
+                    
+                        $GLOBAL:RemoveContentIDs += $Object.SMS_CIToContent.ContentID
+
+                        $GLOBAL:RemoveSubfolders += $Object.SMS_PackageToContent.ContentSubFolder
+                    
+                        $RemovePath = $GLOBAL:PkgSource.PkgSourcePath +"\"+ $Object.SMS_PackageToContent.ContentSubFolder
+
+                        $GLOBAL:RemoveItems += $RemovePath
+                    }
                 }
+
+                Foreach ($Item in $GLOBAL:RemoveItems)
+                {
+                    Write-Log -log "Deleting update content $($Item)."
+                    Remove-Item -LiteralPath filesystem::$Item -Recurse -Force 
+                }
+
+                $DeploymentPackage = [wmi]$GLOBAL:PkgSource.__PATH
+                $DeploymentPackage 
+                Write-Log -log "Found $($RemoveContentIDs.Count) updates that will be removed from package name `"$($DeploymentPackage.Name)`" with a package id of $($DeploymentPackage.PackageID)"
+                
+                ForEach($ContentID in $SUDPData){ 
+                    
+                    $UpdateName = (Get-CMSoftwareUpdate -fast -id $Contentid.SMS_SoftwareUpdate.CI_ID).LocalizedDisplayName
+                    Write-Log -log "Removing $($UpdateName) from $($DeploymentPackage.Name) with a package id of $($DeploymentPackage.PackageID)"
+                    }
+                $ErrorActionPreference = "SilentlyContinue"
+                $DeploymentPackage.RemoveContent($RemoveContentIDs,$True) | Out-Null 
             }
-
-
+        }
+        
+        #Remove Empty Deployment Packages
+        Write-log -log "Sleeping 30 seconds for metadata replication after cleanup"
+        Start-Sleep 30 
+        $EmptyPackages = Get-CMSoftwareUpdateDeploymentPackage | ? {$_.PackageSize -eq 0}
+        ForEach($EmptyPackage in $EmptyPackages){
+            Write-log -log "Deployment Package $($EmptyPackage.Name) contains 0 updates and will be removed."
+            Remove-CMSoftwareUpdateDeploymentPackage -Id $EmptyPackage.PackageID -Force
+            }
+        
 
     }
 
