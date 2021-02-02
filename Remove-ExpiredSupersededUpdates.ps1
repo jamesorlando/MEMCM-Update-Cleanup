@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Perform a cleanup of expired, superseded or not required (0) updates that are deployed. To prevent removing updates prior to deployment of new updates use the delay paramenter. For instance
     if updates are deployed 3 days after Patch Tuesday you would not want to stop deploying the updates that are superseded until you are ready to deploy the updates that superseded them. 
@@ -115,7 +115,7 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
         WHERE 
         (SMS_SoftwareUpdate.IsContentProvisioned=1 and SMS_SoftwareUpdate.IsDeployed=0) and SMS_PackageToContent.PackageType = 5"   
 
-        $SUDPData = Get-WmiObject -Namespace "root\SMS\site_$SiteCode" -Query $SUDPQuery
+        $SUDPData = Get-WmiObject -Namespace "root\SMS\site_$SiteCode" -Query $SUDPQuery 
         $PackageIDs = $SUDPData.SMS_PackageToContent.PackageID | Get-Unique
         Write-Log -log "Found $($PackageIDs.Count) package that needs updates removed and content cleaned. "
 
@@ -131,7 +131,7 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
 
                 $GLOBAL:PkgSource = Get-WmiObject -Namespace "root\SMS\site_$SiteCode" -Query  "Select * from SMS_SoftwareUpdatesPackage WHERE PackageID=`"$PackageID`""
                                             
-                Foreach ($Object in $SUDPData)
+                Foreach ($Object in ($SUDPData))
                 {
                     IF ($Object.SMS_PackageToContent.PackageID -eq $PackageID)
                     {
@@ -155,11 +155,12 @@ If($PatchTuesday.date -lt ((Get-Date).AddDays(-$Delay)).Date -or $PatchTuesday.D
                 $DeploymentPackage = [wmi]$GLOBAL:PkgSource.__PATH
                 $DeploymentPackage 
                 Write-Log -log "Found $($RemoveContentIDs.Count) updates that will be removed from package name `"$($DeploymentPackage.Name)`" with a package id of $($DeploymentPackage.PackageID)"
-                
-                ForEach($ContentID in $SUDPData){ 
+                $AllContentid = $SUDPData.sms_softwareupdate.ci_id | Get-Unique
+                ForEach($ContentID in $AllContentID){ 
                     
-                    $UpdateName = (Get-CMSoftwareUpdate -fast -id $Contentid.SMS_SoftwareUpdate.CI_ID).LocalizedDisplayName
+                    $UpdateName = (Get-CMSoftwareUpdate -fast -id $Contentid).LocalizedDisplayName
                     Write-Log -log "Removing $($UpdateName) from $($DeploymentPackage.Name) with a package id of $($DeploymentPackage.PackageID)"
+
                     }
                 $ErrorActionPreference = "SilentlyContinue"
                 $DeploymentPackage.RemoveContent($RemoveContentIDs,$True) | Out-Null 
