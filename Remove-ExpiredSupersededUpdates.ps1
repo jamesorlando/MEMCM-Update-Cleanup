@@ -17,6 +17,7 @@
     Date Modified: 04-23-2020
     4-23-2020 Added delay to account for delta between patch tuesday and when customer deployes patches. 
     12-7-2020 Package and SUG Cleanup added
+    2/1/2021 Change to break IE 11 logging loop. Get-Unique set to prevent IE 11 update from showing up multiple times. 
 #>
 
 #Parameters
