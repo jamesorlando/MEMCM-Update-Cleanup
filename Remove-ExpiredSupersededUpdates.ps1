@@ -18,6 +18,7 @@
     4-23-2020 Added delay to account for delta between patch tuesday and when customer deployes patches. 
     12-7-2020 Package and SUG Cleanup added
     2/1/2021 Change to break IE 11 logging loop. Get-Unique set to prevent IE 11 update from showing up multiple times. 
+    2/4/2021 Typo preventinig log from rolling over. (.length not .lenght)
 #>
 
 #Parameters
@@ -34,7 +35,7 @@ Param(
 Function Write-Log ($log)
 {
     $log + " " + (Get-Date) | Out-File "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log" -Append
-    if((Get-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log").lenght -gt "5mb")
+    if((Get-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log").length -gt "5mb")
         {
         Rename-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log" -NewName "$env:SMS_LOG_PATH\CleanupUpdateDeployments.lo_"
         }
