@@ -37,7 +37,8 @@ Function Write-Log ($log)
     $log + " " + (Get-Date) | Out-File "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log" -Append
     if((Get-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log").length -gt "5mb")
         {
-        Rename-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log" -NewName "$env:SMS_LOG_PATH\CleanupUpdateDeployments.lo_"
+        Remove-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.lo_"
+        Rename-Item "$env:SMS_LOG_PATH\CleanupUpdateDeployments.log" -NewName "CleanupUpdateDeployments.lo_" 
         }
 }
 
